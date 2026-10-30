@@ -1,0 +1,19 @@
+name: computing-capabilities
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: capabilities
+      POSTGRES_USER: capabilities
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - books-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capabilities -d capabilities"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  books-db:

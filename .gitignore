@@ -1,0 +1,31 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store
+.jupyter/
+
+# Downloaded GeoNames country archives and generated indexes.
+data/geonames/[A-Z][A-Z].zip
+data/geonames/*.sqlite
+data/geonames/*.part
+
+# Ignore generated results except the shared example experiment.
+/data/results/*
+!/data/results/facts_ai_breakthrough_locations_experiment_1.json
+
+# Build outputs and local logs.
+build/
+dist/
+*.log
+
+# Local test coverage reports
+.coverage*
+htmlcov/
+coverage.xml
