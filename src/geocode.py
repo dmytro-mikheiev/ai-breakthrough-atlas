@@ -108,8 +108,67 @@ def prepare_geonames(country_codes=("US",), folder=GEO):
     return database
 
 
+
+def embedded_institution(conn, location):
+    """Find the longest complete institution alias, then narrow by geographic context."""
+    words = name_key(location).split()
+    for size in range(len(words) - 1, 1, -1):
+        matches = {}
+        contexts = []
+        for start in range(len(words) - size + 1):
+            prefix = " ".join(words[:start])
+            # A museum or other distinct site is not interchangeable with its institution.
+            if prefix and not re.fullmatch(r"(?:(?:the|at|in|of)\s*)+", prefix) and not re.search(
+                r"\b(?:university|institute|laboratory|school|college)\b", prefix
+            ):
+                continue
+            alias = " ".join(words[start:start + size])
+            rows = conn.execute(
+                """SELECT p.* FROM places p JOIN names n ON p.id=n.id
+                   WHERE n.name=? AND p.feature IN ('S.UNIV','S.SCH','S.RSCH')
+                   ORDER BY p.id""", (alias,),
+            ).fetchall()
+            if rows:
+                matches.update((row["id"], row) for row in rows)
+                contexts.append(words[:start] + words[start + size:])
+        if not matches:
+            continue
+        # Equal-length institution names may describe different places. Retain ambiguity.
+        candidates = list(matches.values())
+        if len(contexts) != 1:
+            return candidates
+        context = " ".join(contexts[0])
+        context = re.sub(r"\bmass\b", "massachusetts", context)
+        context = re.sub(r"\bn h\b", "new hampshire", context)
+        tokens = context.split()
+        areas = {}
+        for length in range(len(tokens), 0, -1):
+            for start in range(len(tokens) - length + 1):
+                alias = " ".join(tokens[start:start + length])
+                # Ignore connectors and very short aliases such as 'in'.
+                if len(alias) < 3 or alias in {"the", "and", "at", "of"}:
+                    continue
+                for row in conn.execute(
+                    """SELECT p.* FROM places p JOIN names n ON p.id=n.id
+                       WHERE n.name=? AND (p.feature LIKE 'A.%' OR p.feature LIKE 'P.%')""",
+                    (alias,),
+                ):
+                    areas[row["id"]] = row
+        def score(candidate):
+            return sum(
+                area["country"] == candidate["country"]
+                and (area["feature"] == "A.PCLI" or area["admin"] == candidate["admin"])
+                for area in areas.values()
+            )
+        best = max(map(score, candidates))
+        if areas and not best:
+            return []  # Explicit geography conflicts with every candidate.
+        return [candidate for candidate in candidates if score(candidate) == best]
+    return []
+
+
 def normalize_locations(facts, database, overrides=None):
-    """Resolve undefined entries; retain source place names and previously processed facts."""
+    """Resolve undefined/unknown entries; preserve source names and resolved facts."""
     from .facts import LocationFact
 
     overrides = overrides or {}
@@ -118,7 +177,7 @@ def normalize_locations(facts, database, overrides=None):
         conn.row_factory = sqlite3.Row
         for original in facts:
             fact = LocationFact.model_validate(original).model_dump()
-            if fact["location"] != "undefined":
+            if fact["location"] not in {"undefined", "unknown"}:
                 result.append(fact)
                 continue
             location = fact["location_name"]
@@ -154,6 +213,8 @@ def normalize_locations(facts, database, overrides=None):
                         if candidate["id"] not in seen:
                             seen.add(candidate["id"])
                             candidates.append(candidate)
+                if not candidates:
+                    candidates = embedded_institution(conn, location)
             if candidates:
                 institution = bool(
                     re.search(
@@ -188,13 +249,14 @@ def normalize_locations(facts, database, overrides=None):
 
 
 def update_locations(name, database=None, country_codes=("US",), overrides=None, root=OUTPUTS):
-    """Process undefined facts and atomically update the same experiment JSON."""
+    """Retry unresolved facts and atomically update the same experiment JSON."""
     from .experiments import load_experiment, save_experiment
 
     facts = load_experiment(name, root)
-    if not any(fact["location"] == "undefined" for fact in facts):
+    if not any(fact["location"] in {"undefined", "unknown"} for fact in facts):
         return facts
     database = database or prepare_geonames(country_codes)
-    facts = normalize_locations(facts, database, overrides)
-    save_experiment(name, facts, root, overwrite=True)
-    return facts
+    updated = normalize_locations(facts, database, overrides)
+    if updated != facts:
+        save_experiment(name, updated, root, overwrite=True)
+    return updated

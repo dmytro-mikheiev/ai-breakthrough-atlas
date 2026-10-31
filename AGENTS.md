@@ -17,7 +17,7 @@ The user remains responsible for understanding and explaining the submitted proj
   experiments. Database checks and embedding details stay in Python helpers; there
   is no hidden ingestion loop in extraction. Skip unchanged books and saved experiments.
 - Existing experiment names load saved facts without database or inference calls. The GeoNames step
-  updates only undefined facts in that same JSON file; no second export file.
+  updates undefined and unknown facts in that same JSON file; no second export file.
 - Extraction sends sequential batches, with EXTRACTOR_BATCH_SIZE editable in the notebook
   (default 10). Each returned chunk_id must belong to its batch; Python supplies book_name
   and validates evidence against that chunk. Saved fact schema stays unchanged. Output
@@ -27,6 +27,7 @@ The user remains responsible for understanding and explaining the submitted proj
   Notebook holds editable CLASSIFIER_MODEL/PROMPT/CRITERIA/DROP_CONFIDENCE and
   EXTRACTOR_MODEL/PROMPT separately. Decision labels stay keep/drop/uncertain.
   Drop only confident negatives (default 0.8); keep uncertain decisions. No quality claim.
+  Classification does not require a location; extraction still requires source-backed place evidence.
 - Use local BGE-M3/PostgreSQL and direct OpenAI inference. Read OPENAI_API_KEY from
   `.env`. Keep classifier/extractor model, prompt and criteria editable in notebook.
   Do not reintroduce intermediary provider routing or obsolete credentials.

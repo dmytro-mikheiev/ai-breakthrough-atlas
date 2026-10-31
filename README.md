@@ -51,7 +51,9 @@ Existing experiment names load the current saved facts without inference calls.
 
 Dense search retrieves up to `TOP_K` chunks per selected book for the single research
 question (50 by default). OpenAI Decisions (`gpt-6-luna`) judges whether each passage contains
-an achievement and a linked place or institution. GPT-5 mini extracts the kept passages.
+a potential AI achievement or relevant early-computing milestone. A location is not
+required for classification. GPT-5 mini extracts the kept passages and still requires
+a source-backed location for each saved fact.
 Both use the same OpenAI API key.
 Its notebook instructions are separate from the extraction prompt; an explicit year
 is optional. Only a `drop` decision at confidence >= 0.8 is discarded; all other
@@ -62,9 +64,9 @@ checks that ID belongs to the batch, validates quotations against that specific 
 and supplies book metadata. Output allowance scales with batch size, capped at 16,000
 tokens per request. Truncated responses stop the run without saving partial results.
 
-The notebook selects one book initially: up to 50 candidate chunks. Enable more books
-with their commented filenames. The extraction safety limit is 150 kept chunks; larger
-runs may require increasing `max_calls` explicitly.
+Choose books with `SELECTED_BOOKS`; `TOP_K` limits candidate chunks per book. The notebook
+sets `max_calls=TOP_K * len(SELECTED_BOOKS)`, allowing extraction of every retrieved
+candidate without a fixed 150-chunk limit. Batches still contain up to `EXTRACTOR_BATCH_SIZE` chunks.
 The notebook prints retrieved, kept, dropped and extracted counts. These are not
 quality scores. Classification failure stops the run without saving partial facts.
 Existing experiment names skip both hosted models; use a new name to apply changes.
@@ -101,7 +103,7 @@ JSON array; no per-run config sidecar. Literal checks do not establish historica
 ## Offline location resolution
 
 The additional notebook step calls `update_locations` from `src/geocode.py`. It processes
-only facts with `location="undefined"` and updates the **same** facts JSON. No run flag,
+facts with `location="undefined"` or `location="unknown"` and updates the **same** facts JSON. No run flag,
 second export, resolution-report file or extra output name is needed.
 
 | Status | Meaning | Coordinates |
@@ -112,12 +114,14 @@ second export, resolution-report file or extra output name is needed.
 | ambiguous | Multiple candidates or places; one selected | Filled |
 
 GeoNames names and alternate names are matched after case/accent/punctuation
-normalization and removal of equipment suffixes. For ambiguous matches, prefer
+normalization and removal of equipment suffixes. If an exact name fails, look for the
+longest complete institution name within the text and use city/state/country context
+to narrow its matches. Original names remain unchanged. For ambiguous matches, prefer
 institutional features when context names an institution, then exact primary names;
 equal scores use the first available candidate. Ambiguous points are best guesses,
 not verified historical sites. Original source place text remains in `location_name`.
 
-Processed statuses are skipped on rerun. `LOCATION_OVERRIDES` can specify a reviewed
+Unknown locations are retried on rerun; defined and ambiguous locations are skipped. `LOCATION_OVERRIDES` can specify a reviewed
 GeoNames ID or None. To retry a processed fact, set location to undefined and clear
 both coordinates first. No model API is used for this step.
 
@@ -145,7 +149,7 @@ and visual inspection do not establish historical accuracy or extraction recall.
 ```text
 notebooks/analysis.ipynb   Editable settings, run/replay, GeoNames results
 src/                     Ingest, retrieve, classify, extract, validate and save
-data/books/*.txt         Seven title-named books
+data/books/*.txt         Fifteen title-named books
 data/results/            Facts JSON arrays updated in place
 data/geonames/           Frozen country ZIPs, source metadata and local name index
 tests/                   Focused software checks with synthetic evidence

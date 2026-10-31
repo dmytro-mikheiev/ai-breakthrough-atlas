@@ -29,7 +29,8 @@ Classification uses `/v1/decisions`; extraction uses `/v1/chat/completions`.
 2. `search.py` embeds the single research question once, then selects up to `TOP_K`
    chunks per selected book using dense similarity (50 by default).
 3. `classify.py` sends each candidate to OpenAI Decisions (`gpt-6-luna`) using notebook
-   instructions and choices. It validates the named answer from the API's answers array. Only confident drops (>= 0.8 by default) are excluded; keep/uncertain
+   instructions and choices. Location is not required for this filter; extraction checks
+   location evidence later. It validates the named answer from the API's answers array. Only confident drops (>= 0.8 by default) are excluded; keep/uncertain
    and low-confidence drops proceed. This cutoff has not been evaluated. Failures stop
    the run without saving partial facts. No classification sidecars are written.
 4. `extract.py` sends sequential batches of up to `EXTRACTOR_BATCH_SIZE` chunks (default 10)
@@ -45,9 +46,9 @@ Classification uses `/v1/decisions`; extraction uses `/v1/chat/completions`.
    before publishing the completed JSON without overwriting an existing name. Loading
    checks the nine fact fields and their types. There is no run config file, settings
    snapshot, stored extraction diagnostics or JSON/config-pair machinery.
-7. `geocode.py` reads the same JSON and resolves only undefined facts. It fills coordinates
+7. `geocode.py` reads the same JSON and resolves undefined and unknown facts. It fills coordinates
    and marks defined/ambiguous, or unknown with null coordinates, then atomically replaces
-   that JSON. Previously processed facts are skipped. The notebook displays the final table, status pie chart and Folium map.
+   that JSON. Defined and ambiguous facts are skipped. The notebook displays the final table, status pie chart and Folium map.
 
 ## Scope and limits
 
@@ -66,7 +67,7 @@ before/after benchmarking remain deferred by user instruction.
 happen only at setup. `normalize_locations` matches source names and selects candidates.
 Institution-like contexts prefer institution features, then exact primary names, with
 first-candidate tie breaking. Multiple possibilities remain marked ambiguous even after
-one point is selected. `update_locations` processes undefined entries and saves the same
+one point is selected. `update_locations` processes undefined and unknown entries and saves the same
 JSON; there is no geocoded output directory or separate report. Source place text stays
 in location_name, while location stores resolution status. Both coordinate bounds and
 status/coordinate consistency are validated. GeoNames place points do not verify the

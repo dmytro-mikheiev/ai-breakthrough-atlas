@@ -1,6 +1,7 @@
 """Synthetic GeoNames records test inline statuses and in-place persistence."""
 
 import json
+import sqlite3
 import zipfile
 
 import pytest
@@ -109,10 +110,12 @@ def test_updates_same_file_and_skips_processed_records(tmp_path, monkeypatch):
     assert [p.name for p in tmp_path.glob("facts_*")] == ["facts_pilot.json"]
     stamp = path.stat().st_mtime_ns
     monkeypatch.setattr(
-        "src.geocode.prepare_geonames", lambda *a: pytest.fail("No undefined facts")
+        "src.geocode.prepare_geonames", lambda *a: pytest.fail("Resolved facts should not download")
     )
-    assert update_locations("pilot", root=tmp_path) == result
+    assert update_locations("pilot", db, root=tmp_path) == result
     assert path.stat().st_mtime_ns == stamp
+    save_experiment("resolved", [processed], tmp_path)
+    assert update_locations("resolved", root=tmp_path) == [processed]
 
 
 @pytest.mark.parametrize(
@@ -130,3 +133,35 @@ def test_status_and_coordinates_must_agree(status, lat, lon):
         LocationFact.model_validate(
             dict(fact("Test"), location=status, latitude=lat, longitude=lon)
         )
+
+
+def test_embedded_institution_context_and_retry(tmp_path, monkeypatch):
+    db = dataset(tmp_path, monkeypatch)
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO places VALUES (6, 'Example Institute', 46, -80, 'US', 'NH', 'S.UNIV')")
+        conn.execute("INSERT INTO names VALUES ('example institute', 6)")
+        conn.execute("INSERT INTO places VALUES (7, 'Massachusetts', 40, -70, 'US', 'MA', 'A.ADM1')")
+        conn.execute("INSERT INTO names VALUES ('massachusetts', 7)")
+        conn.execute("INSERT INTO places VALUES (8, 'New Hampshire', 46, -80, 'US', 'NH', 'A.ADM1')")
+        conn.execute("INSERT INTO names VALUES ('new hampshire', 8)")
+        conn.execute("INSERT INTO places VALUES (9, 'London', 51, 0, 'GB', 'ENG', 'P.PPL')")
+        conn.execute("INSERT INTO names VALUES ('london', 9)")
+    originals = [
+        dict(fact("Example Institute in Mass."), location="unknown"),
+        fact("Example Institute in N. H."),
+        fact("Example Institute in an unspecified town"),
+        fact("Not Example Institutewise"),
+        fact("Example Institute in London"),
+    ]
+    save_experiment("retry", originals, tmp_path)
+    result = update_locations("retry", db, root=tmp_path)
+    assert [r["location"] for r in result] == ["defined", "defined", "ambiguous", "unknown", "unknown"]
+    assert [r["latitude"] for r in result] == [40, 46, 40, None, None]
+    assert [r["location_name"] for r in result] == [r["location_name"] for r in originals]
+    assert load_experiment("retry", tmp_path) == result
+
+
+def test_embedded_name_does_not_replace_distinct_museum(tmp_path, monkeypatch):
+    db = dataset(tmp_path, monkeypatch)
+    result = normalize_locations([fact("Museum of Example Institute")], db)
+    assert result[0]["location"] == "unknown"

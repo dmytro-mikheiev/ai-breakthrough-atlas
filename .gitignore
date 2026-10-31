@@ -16,10 +16,6 @@ data/geonames/[A-Z][A-Z].zip
 data/geonames/*.sqlite
 data/geonames/*.part
 
-# Ignore generated results except the shared example experiment.
-/data/results/*
-!/data/results/facts_ai_breakthrough_locations_experiment_1.json
-
 # Build outputs and local logs.
 build/
 dist/
